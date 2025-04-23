@@ -1,0 +1,20 @@
+{
+ "content": null,
+ "creation": "2025-04-23 17:52:41.281869",
+ "docstatus": 0,
+ "doctype": "Page",
+ "icon": "fa fa-trash",
+ "idx": 0,
+ "modified": "2025-04-23 17:52:41.281869",
+ "modified_by": "Administrator",
+ "module": "Reset Database",
+ "name": "reset-database",
+ "owner": "Administrator",
+ "page_name": "reset-database",
+ "roles": [],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "R\u00e9initialiser la base de donn\u00e9es"
+}
