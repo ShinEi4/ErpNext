@@ -343,6 +343,233 @@ POST /api/method/frappe.desk.query_report.run
     }
 }
 
+### 16. API d'Authentification et Login
+
+#### Login (Connexion)
+POST /api/method/login
+```json
+{
+  "usr": "utilisateur@exemple.com",
+  "pwd": "votre_mot_de_passe"
+}
+```
+
+#### Vérifier l'utilisateur connecté
+GET /api/method/frappe.auth.get_logged_user
+
+#### Se déconnecter
+POST /api/method/logout
+
+#### Inscrire un nouvel utilisateur
+POST /api/method/frappe.core.doctype.user.user.sign_up
+```json
+{
+  "email": "nouveau@exemple.com",
+  "full_name": "Nouvel Utilisateur",
+  "redirect_to": "/app"
+}
+```
+
+### 17. API de Gestion des Articles (Items)
+
+#### Récupérer la liste des articles
+GET /api/resource/Item
+Paramètres optionnels:
+fields=["item_code", "item_name", "description", "stock_uom"]
+filters=[["Item", "is_stock_item", "=", 1]]
+
+#### Créer un article
+POST /api/resource/Item
+```json
+{
+  "item_code": "ITEM-00001",
+  "item_name": "Nom de l'article",
+  "description": "Description de l'article",
+  "item_group": "Produits",
+  "stock_uom": "Nos",
+  "is_stock_item": 1,
+  "is_sales_item": 1,
+  "is_purchase_item": 1
+}
+```
+
+### 18. API de Demande de Besoin (Material Request)
+
+#### Récupérer les demandes de besoin
+GET /api/resource/Material Request
+```
+Paramètres:
+fields=["name", "status", "transaction_date", "material_request_type"]
+filters=[["Material Request", "status", "=", "Pending"]]
+```
+
+#### Créer une demande de besoin
+POST /api/resource/Material Request
+```json
+{
+  "material_request_type": "Purchase",
+  "transaction_date": "2023-01-15",
+  "company": "Votre Entreprise",
+  "items": [
+    {
+      "item_code": "ITEM-00001",
+      "qty": 10,
+      "schedule_date": "2023-01-20",
+      "warehouse": "Entrepôt Principal - VE"
+    }
+  ]
+}
+```
+
+#### Mettre à jour le statut d'une demande
+POST /api/method/erpnext.stock.doctype.material_request.material_request.update_status
+```json
+{
+  "name": "MAT-MR-2023-00001",
+  "status": "Pending"
+}
+```
+
+### 19. API de Demande de Devis (Request for Quotation)
+
+#### Récupérer toutes les demandes de devis
+GET /api/resource/Request for Quotation
+```
+Paramètres:
+fields=["name", "transaction_date", "status"]
+filters=[["Request for Quotation", "docstatus", "=", 1]]
+```
+
+#### Voir les demandes de devis par fournisseur
+GET /api/resource/Request for Quotation Supplier
+```
+filters=[["Request for Quotation Supplier", "supplier", "=", "FOURNISSEUR-001"]]
+```
+
+#### Créer une demande de devis à partir d'une demande de besoin
+POST /api/method/erpnext.stock.doctype.material_request.material_request.make_request_for_quotation
+```json
+{
+  "source_name": "MAT-MR-2023-00001"
+}
+```
+
+### 20. API de Devis Fournisseur (Supplier Quotation)
+
+#### Récupérer les devis fournisseur
+GET /api/resource/Supplier Quotation
+```
+Paramètres:
+fields=["name", "supplier", "grand_total", "status"]
+filters=[["Supplier Quotation", "supplier", "=", "FOURNISSEUR-001"]]
+```
+
+#### Créer un devis fournisseur
+POST /api/resource/Supplier Quotation
+```json
+{
+  "supplier": "FOURNISSEUR-001",
+  "transaction_date": "2023-01-20",
+  "valid_till": "2023-02-20",
+  "company": "Votre Entreprise",
+  "items": [
+    {
+      "item_code": "ITEM-00001",
+      "qty": 10,
+      "rate": 100,
+      "schedule_date": "2023-01-25"
+    }
+  ]
+}
+```
+
+### 21. API de Bon de Commande (Purchase Order)
+
+#### Récupérer les bons de commande
+GET /api/resource/Purchase Order
+```
+Paramètres:
+fields=["name", "supplier", "grand_total", "status"]
+filters=[["Purchase Order", "status", "=", "To Receive and Bill"]]
+```
+
+#### Voir les bons de commande par fournisseur
+GET /api/resource/Purchase Order
+```
+filters=[["Purchase Order", "supplier", "=", "FOURNISSEUR-001"]]
+```
+
+#### Créer un bon de commande à partir d'un devis fournisseur
+POST /api/method/erpnext.buying.doctype.supplier_quotation.supplier_quotation.make_purchase_order
+```json
+{
+  "source_name": "QUOTE-2023-00001"
+}
+```
+
+### 22. API de Facture et Paiement
+
+#### Récupérer les factures d'achat
+GET /api/resource/Purchase Invoice
+```
+Paramètres:
+fields=["name", "supplier", "grand_total", "status", "outstanding_amount"]
+filters=[["Purchase Invoice", "status", "=", "Unpaid"]]
+```
+
+#### Créer une facture à partir d'un bon de commande
+POST /api/method/erpnext.buying.doctype.purchase_order.purchase_order.make_purchase_invoice
+```json
+{
+  "source_name": "PO-2023-00001"
+}
+```
+
+#### Créer un paiement pour une facture
+POST /api/resource/Payment Entry
+```json
+{
+  "payment_type": "Pay",
+  "party_type": "Supplier",
+  "party": "FOURNISSEUR-001",
+  "company": "Votre Entreprise",
+  "paid_amount": 1000,
+  "received_amount": 1000,
+  "reference_no": "REF-001",
+  "reference_date": "2023-02-01",
+  "paid_from": "Compte Bancaire - VE",
+  "paid_to": "Créditeurs - VE",
+  "references": [
+    {
+      "reference_doctype": "Purchase Invoice",
+      "reference_name": "PINV-2023-00001",
+      "allocated_amount": 1000
+    }
+  ]
+}
+```
+
+### 23. API de Fournisseurs
+
+#### Récupérer la liste des fournisseurs
+GET /api/resource/Supplier
+```
+Paramètres:
+fields=["name", "supplier_name", "supplier_group", "country"]
+filters=[["Supplier", "disabled", "=", 0]]
+```
+
+#### Créer un fournisseur
+POST /api/resource/Supplier
+```json
+{
+  "supplier_name": "Nouveau Fournisseur",
+  "supplier_group": "Matières Premières",
+  "supplier_type": "Company",
+  "country": "France"
+}
+```
+
 ## Gestion des erreurs
 
 Les réponses d'erreur suivent un format standard :
