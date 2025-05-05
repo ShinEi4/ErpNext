@@ -1,0 +1,18 @@
+{
+ "content": null,
+ "creation": "2025-05-05 08:16:48.555874",
+ "docstatus": 0,
+ "doctype": "Page",
+ "idx": 0,
+ "modified": "2025-05-05 08:16:48.555874",
+ "modified_by": "Administrator",
+ "module": "Import DB",
+ "name": "import-database",
+ "owner": "Administrator",
+ "page_name": "import-database",
+ "roles": [],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0
+}

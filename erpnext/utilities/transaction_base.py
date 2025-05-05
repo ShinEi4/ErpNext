@@ -420,17 +420,26 @@ class TransactionBase(StatusUpdater):
 
 		# Field order precedance
 		# blanket_order_rate -> margin_type -> discount_percentage -> discount_amount
-		if item_obj.parenttype in ["Sales Order", "Quotation"] and item_obj.blanket_order_rate:
+		if item_obj.parenttype in ["Sales Order", "Quotation"] and hasattr(item_obj, 'blanket_order_rate') and item_obj.blanket_order_rate:
 			effective_item_rate = item_obj.blanket_order_rate
 
-		if item_obj.margin_type == "Percentage":
+		# Vérifier si les attributs liés aux marges existent
+		has_margin_fields = hasattr(item_obj, 'margin_type') and hasattr(item_obj, 'margin_rate_or_amount')
+		
+		if has_margin_fields and item_obj.margin_type == "Percentage":
 			item_obj.rate_with_margin = flt(effective_item_rate) + flt(effective_item_rate) * (
 				flt(item_obj.margin_rate_or_amount) / 100
 			)
-		else:
+		elif has_margin_fields:
 			item_obj.rate_with_margin = flt(effective_item_rate) + flt(item_obj.margin_rate_or_amount)
+		else:
+			# Si les champs de marge n'existent pas, utiliser le taux effectif directement
+			item_obj.rate_with_margin = flt(effective_item_rate)
 
-		item_obj.base_rate_with_margin = flt(item_obj.rate_with_margin) * flt(self.conversion_rate)
+		# Continuer avec le reste de la fonction
+		if hasattr(item_obj, 'base_rate_with_margin'):
+			item_obj.base_rate_with_margin = flt(item_obj.rate_with_margin) * flt(self.conversion_rate)
+		
 		item_rate = flt(item_obj.rate_with_margin, item_obj.precision("rate"))
 
 		if item_obj.discount_percentage and not item_obj.discount_amount:
