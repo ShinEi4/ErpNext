@@ -106,6 +106,117 @@ def import_all_data(material_request_file=None, supplier_file=None, rfq_file=Non
         results["errors"].append(_("Erreur générale: {0}").format(str(e)))
         return results
 
+@frappe.whitelist()
+def api_import_data(supplier_csv_content=None, material_request_csv_content=None, rfq_csv_content=None):
+    """
+    Importer toutes les données depuis des contenus CSV fournis directement via API.
+    Cette fonction est destinée aux clients API externes qui n'utilisent pas l'interface Frappe.
+    
+    Paramètres:
+    - supplier_csv_content: Contenu CSV des fournisseurs (chaîne de caractères)
+    - material_request_csv_content: Contenu CSV des demandes de matériel (chaîne de caractères)
+    - rfq_csv_content: Contenu CSV des demandes de devis (chaîne de caractères)
+    
+    Retourne:
+    - Dictionnaire avec les résultats de l'importation
+    """
+    frappe.only_for("System Manager")
+    
+    results = {
+        "success": False,
+        "suppliers_imported": 0,
+        "material_requests_imported": 0,
+        "rfqs_imported": 0,
+        "supplier_quotations_created": 0,
+        "errors": [],
+        "info": []
+    }
+    
+    try:
+        # Vérifier si tous les contenus CSV nécessaires sont fournis
+        if not (supplier_csv_content and material_request_csv_content and rfq_csv_content):
+            results["errors"].append(_("Tous les contenus CSV sont requis pour l'importation."))
+            return results
+        
+        # Analyser les contenus CSV
+        try:
+            supplier_data = parse_csv_content(supplier_csv_content, "Supplier")
+            mr_data = parse_csv_content(material_request_csv_content, "Material Request")
+            rfq_data = parse_csv_content(rfq_csv_content, "Request for Quotation")
+        except Exception as e:
+            results["errors"].append(_("Erreur lors de l'analyse des contenus CSV: {0}").format(str(e)))
+            return results
+        
+        # Valider les en-têtes
+        validation_errors = []
+        
+        if not validate_supplier_headers(supplier_data[0], validation_errors):
+            results["errors"].extend(validation_errors)
+            return results
+        
+        if not validate_material_request_headers(mr_data[0], validation_errors):
+            results["errors"].extend(validation_errors)
+            return results
+        
+        if not validate_rfq_headers(rfq_data[0], validation_errors):
+            results["errors"].extend(validation_errors)
+            return results
+        
+        # Commencer une transaction
+        frappe.db.begin()
+        
+        # Traiter les données dans l'ordre
+        suppliers = process_suppliers(supplier_data[1:], results)
+        material_requests = process_material_requests(mr_data[1:], results)
+        rfqs = process_rfqs(rfq_data[1:], suppliers, material_requests, results)
+        
+        # Si l'un des processus a échoué ou s'il y a des erreurs, rollback
+        if not suppliers or not material_requests or not rfqs or results["errors"]:
+            frappe.db.rollback()
+            return results
+        
+        # Insérer les données dans l'ordre
+        suppliers_imported = insert_suppliers(suppliers, results)
+        
+        # Si échec, rollback et retourner les résultats
+        if not suppliers_imported:
+            frappe.db.rollback()
+            return results
+        
+        material_requests_imported = insert_material_requests(material_requests, results)
+        
+        # Si échec, rollback et retourner les résultats
+        if not material_requests_imported:
+            frappe.db.rollback()
+            return results
+        
+        rfqs_inserted = insert_rfqs(rfqs, results)
+        
+        # Si échec, rollback et retourner les résultats
+        if not rfqs_inserted:
+            frappe.db.rollback()
+            return results
+        
+        # Créer les supplier quotations
+        supplier_quotations_created = create_supplier_quotations(rfqs_inserted, results)
+        
+        # Si échec, rollback et retourner les résultats
+        if not supplier_quotations_created:
+            frappe.db.rollback()
+            return results
+        
+        # Si nous arrivons ici, il n'y a pas eu d'erreurs, faire un commit
+        frappe.db.commit()
+        results["success"] = True
+        
+        return results
+    
+    except Exception as e:
+        frappe.db.rollback()
+        frappe.log_error(frappe.get_traceback())
+        results["errors"].append(_("Erreur générale: {0}").format(str(e)))
+        return results
+
 def parse_csv_file(file_url, file_type):
     """Analyser le contenu d'un fichier CSV"""
     try:
@@ -132,6 +243,34 @@ def parse_csv_file(file_url, file_type):
         
     except Exception as e:
         raise Exception(_("Erreur lors de la lecture du fichier {0}: {1}").format(file_type, str(e)))
+
+def parse_csv_content(csv_content, data_type):
+    """
+    Analyser le contenu CSV fourni directement
+    
+    Paramètres:
+    - csv_content: Contenu CSV (chaîne de caractères)
+    - data_type: Type de données pour les messages d'erreur
+    
+    Retourne:
+    - Liste de lignes CSV analysées
+    """
+    try:
+        if not csv_content:
+            raise Exception(_("Contenu CSV vide pour {0}").format(data_type))
+        
+        # Analyser le CSV
+        csv_stream = io.StringIO(csv_content)
+        reader = csv.reader(csv_stream)
+        rows = list(reader)
+        
+        if not rows or len(rows) < 2:  # Au moins l'en-tête et une ligne de données
+            raise Exception(_("Le contenu CSV pour {0} est vide ou ne contient pas de données.").format(data_type))
+        
+        return rows
+        
+    except Exception as e:
+        raise Exception(_("Erreur lors de l'analyse du contenu CSV pour {0}: {1}").format(data_type, str(e)))
 
 def validate_supplier_headers(headers, errors):
     """Valider les en-têtes du fichier Supplier"""

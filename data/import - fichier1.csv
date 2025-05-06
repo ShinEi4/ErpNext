@@ -1,0 +1,4 @@
+date,item_name,item_groupe,required_by,quantity,purpose,target_warehouse,ref
+05/05/2025,boulon,piece,06/06/2025,13,Purchase,All Warehouses,1
+05/05/2025,ciment,consommable,06/06/2025,5,Purchase,All Warehouses,2
+05/05/2025,ciment,consommable,06/06/2025,5,Purchase,All Warehouses,1
