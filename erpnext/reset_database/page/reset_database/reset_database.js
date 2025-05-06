@@ -13,20 +13,43 @@ class ResetDatabaseController {
 	constructor(page) {
 		this.page = page;
 		this.selectedTables = [];
+		this.selectedDoctypes = [];
 		this.tables = [];
+		this.doctypes = [];
+		this.activeTab = 'doctypes'; // Par défaut, afficher l'onglet des doctypes
 		
 		this.setup();
-		this.loadTables();
+		this.loadDoctypes(); // Charger les doctypes par défaut
 	}
 	
 	setup() {
 		// Ajouter des boutons d'action
-		this.page.set_primary_action(__('Vider les tables sélectionnées'), () => this.resetSelectedTables(), 'octicon octicon-sync');
-		this.page.set_secondary_action(__('Vider toutes les tables'), () => this.resetAllTables());
+		this.setupActionButtons();
 		
 		// Ajouter les sections
 		this.setupWarningSection();
-		this.setupTableSelectionSection();
+		this.setupTabsSection();
+		this.setupSelectionSection();
+	}
+	
+	setupActionButtons() {
+		// Bouton primaire pour vider les éléments sélectionnés
+		this.page.set_primary_action(__('Vider les éléments sélectionnés'), () => {
+			if (this.activeTab === 'doctypes') {
+				this.resetSelectedDoctypes();
+			} else {
+				this.resetSelectedTables();
+			}
+		}, 'octicon octicon-sync');
+		
+		// Bouton secondaire pour vider tous les éléments
+		this.page.set_secondary_action(__('Vider tous les éléments'), () => {
+			if (this.activeTab === 'doctypes') {
+				this.resetAllDoctypes();
+			} else {
+				this.resetAllTables();
+			}
+		});
 	}
 	
 	setupWarningSection() {
@@ -34,17 +57,17 @@ class ResetDatabaseController {
 		let warning = $(`
 			<div class="alert alert-warning">
 				<h4>${__('Attention')}</h4>
-				<p>${__('Cette page vous permet de réinitialiser des tables spécifiques de la base de données en conservant les informations des utilisateurs.')}</p>
+				<p>${__('Cette page vous permet de réinitialiser des doctypes ou tables spécifiques de la base de données en conservant les informations des utilisateurs.')}</p>
 				<p>${__('Utilisez cette fonctionnalité avec précaution car elle supprimera des données importantes.')}</p>
 			</div>
 		`);
 		
-		// Informations importantes - n'utilisons pas get_alert car il pourrait ne pas exister
+		// Informations importantes
 		let info = $(`
 			<div class="alert alert-info">
 				<h5>${__('Informations importantes')}</h5>
 				<ul>
-					<li>${__('Les données des tables sélectionnées seront supprimées')}</li>
+					<li>${__('Les données des éléments sélectionnés seront supprimées')}</li>
 					<li>${__('Cette action est irréversible')}</li>
 					<li>${__('Effectuez une sauvegarde avant de procéder à cette opération')}</li>
 				</ul>
@@ -55,23 +78,62 @@ class ResetDatabaseController {
 		$(info).appendTo(this.page.main);
 	}
 	
-	setupTableSelectionSection() {
-		// Section de sélection des tables
-		let tableSection = $(`<div class="tables-selection mt-4"></div>`).appendTo(this.page.main);
+	setupTabsSection() {
+		// Créer les onglets pour tables/doctypes
+		let tabsSection = $(`
+			<div class="tabs-section mt-4">
+				<div class="form-group">
+					<div class="btn-group" role="group">
+						<button type="button" class="btn btn-default doctype-tab active">
+							${__('Par DocTypes')}
+						</button>
+						<button type="button" class="btn btn-default table-tab">
+							${__('Par Tables')}
+						</button>
+					</div>
+				</div>
+			</div>
+		`).appendTo(this.page.main);
+		
+		// Gérer les événements des onglets
+		tabsSection.find('.doctype-tab').on('click', () => {
+			this.activeTab = 'doctypes';
+			tabsSection.find('.doctype-tab').addClass('active');
+			tabsSection.find('.table-tab').removeClass('active');
+			this.loadDoctypes();
+		});
+		
+		tabsSection.find('.table-tab').on('click', () => {
+			this.activeTab = 'tables';
+			tabsSection.find('.table-tab').addClass('active');
+			tabsSection.find('.doctype-tab').removeClass('active');
+			this.loadTables();
+		});
+		
+		// Conteneur pour les sections
+		this.selectionContainer = $(`<div class="selection-container"></div>`).appendTo(this.page.main);
+	}
+	
+	setupSelectionSection() {
+		// Cette section sera dynamiquement remplie selon l'onglet actif
+		this.selectionContainer.empty();
+		
+		// Section de sélection
+		let selectionSection = $(`<div class="selection-section mt-4"></div>`).appendTo(this.selectionContainer);
 		
 		// Créer un champ de recherche standard
 		let searchGroup = $(`
 			<div class="form-group">
-				<label class="control-label">${__('Rechercher des tables')}</label>
-				<input type="text" class="form-control table-search" placeholder="${__('Nom de table...')}">
+				<label class="control-label">${__('Rechercher')}</label>
+				<input type="text" class="form-control search-field" placeholder="${__('Rechercher...')}">
 			</div>
-		`).appendTo(tableSection);
+		`).appendTo(selectionSection);
 		
-		this.searchField = searchGroup.find('.table-search');
-		this.searchField.on('input', () => this.filterTables());
+		this.searchField = searchGroup.find('.search-field');
+		this.searchField.on('input', () => this.filterItems());
 		
 		// Ajouter boutons de sélection
-		let buttonGroup = $(`<div class="btn-group mt-2 mb-4"></div>`).appendTo(tableSection);
+		let buttonGroup = $(`<div class="btn-group mt-2 mb-4"></div>`).appendTo(selectionSection);
 		
 		$(`<button class="btn btn-default btn-sm">${__('Sélectionner tout')}</button>`)
 			.appendTo(buttonGroup)
@@ -81,13 +143,33 @@ class ResetDatabaseController {
 			.appendTo(buttonGroup)
 			.on('click', () => this.deselectAll());
 		
-		// Container pour la liste des tables
-		this.tablesContainer = $(`<div class="tables-container frappe-card p-3"></div>`).appendTo(tableSection);
+		// Container pour la liste des éléments
+		this.itemsContainer = $(`<div class="items-container frappe-card p-3"></div>`).appendTo(selectionSection);
+	}
+	
+	loadDoctypes() {
+		this.setupSelectionSection();
+		
+		// Afficher un message de chargement
+		let loadingMessage = $(`<div class="text-muted text-center p-5">${__('Chargement des doctypes...')}</div>`).appendTo(this.itemsContainer);
+		
+		frappe.call({
+			method: 'erpnext.reset_database.page.reset_database.reset_database.get_all_doctypes',
+			callback: (r) => {
+				loadingMessage.remove();
+				if(r.message) {
+					this.doctypes = r.message;
+					this.renderDoctypes();
+				}
+			}
+		});
 	}
 	
 	loadTables() {
+		this.setupSelectionSection();
+		
 		// Afficher un message de chargement
-		let loadingMessage = $(`<div class="text-muted text-center p-5">${__('Chargement des tables...')}</div>`).appendTo(this.tablesContainer);
+		let loadingMessage = $(`<div class="text-muted text-center p-5">${__('Chargement des tables...')}</div>`).appendTo(this.itemsContainer);
 		
 		frappe.call({
 			method: 'erpnext.reset_database.page.reset_database.reset_database.get_all_tables',
@@ -101,11 +183,62 @@ class ResetDatabaseController {
 		});
 	}
 	
+	renderDoctypes() {
+		this.itemsContainer.empty();
+		this.selectedDoctypes = [];
+		
+		// Grouper les doctypes par modules
+		let moduleGroups = this.groupDoctypesByModule();
+		
+		// Créer des sections pour chaque module
+		Object.keys(moduleGroups).sort().forEach(module => {
+			let moduleSection = $(`
+				<div class="module-section mb-3">
+					<h6 class="module-title">${module} (${moduleGroups[module].length})</h6>
+					<div class="item-list row"></div>
+				</div>
+			`).appendTo(this.itemsContainer);
+			
+			let itemList = moduleSection.find('.item-list');
+			
+			// Créer une case à cocher pour chaque doctype
+			moduleGroups[module].forEach(doctype => {
+				let itemCol = $(`<div class="col-md-4 item-entry mb-2"></div>`).appendTo(itemList);
+				
+				let checkboxItem = $(`
+					<div class="checkbox">
+						<label>
+							<input type="checkbox" data-doctype="${doctype.name}"> 
+							${doctype.name} <span class="text-muted">(${doctype.count})</span>
+						</label>
+					</div>
+				`).appendTo(itemCol);
+				
+				let checkbox = checkboxItem.find('input[type="checkbox"]');
+				checkbox.on('change', () => {
+					if(checkbox.is(':checked')) {
+						if(!this.selectedDoctypes.includes(doctype.name)) {
+							this.selectedDoctypes.push(doctype.name);
+						}
+					} else {
+						this.selectedDoctypes = this.selectedDoctypes.filter(d => d !== doctype.name);
+					}
+					this.updateTitle();
+				});
+				
+				// Stocker la référence à la case à cocher
+				doctype.checkbox = checkbox;
+			});
+		});
+		
+		this.updateTitle();
+	}
+	
 	renderTables() {
-		this.tablesContainer.empty();
+		this.itemsContainer.empty();
 		this.selectedTables = [];
 		
-		// Grouper les tables par modules
+		// Grouper les tables par modules (basé sur le code existant)
 		let moduleGroups = this.groupTablesByModule();
 		
 		// Créer des sections pour chaque module
@@ -113,15 +246,15 @@ class ResetDatabaseController {
 			let moduleSection = $(`
 				<div class="module-section mb-3">
 					<h6 class="module-title">${module} (${moduleGroups[module].length})</h6>
-					<div class="table-list row"></div>
+					<div class="item-list row"></div>
 				</div>
-			`).appendTo(this.tablesContainer);
+			`).appendTo(this.itemsContainer);
 			
-			let tableList = moduleSection.find('.table-list');
+			let itemList = moduleSection.find('.item-list');
 			
-			// Créer une case à cocher standard pour chaque table
+			// Créer une case à cocher pour chaque table
 			moduleGroups[module].forEach(table => {
-				let tableCol = $(`<div class="col-md-4 table-item mb-2"></div>`).appendTo(tableList);
+				let itemCol = $(`<div class="col-md-4 item-entry mb-2"></div>`).appendTo(itemList);
 				
 				let checkboxItem = $(`
 					<div class="checkbox">
@@ -131,7 +264,7 @@ class ResetDatabaseController {
 							${table.description ? '<small class="text-muted d-block">' + table.description + '</small>' : ''}
 						</label>
 					</div>
-				`).appendTo(tableCol);
+				`).appendTo(itemCol);
 				
 				let checkbox = checkboxItem.find('input[type="checkbox"]');
 				checkbox.on('change', () => {
@@ -151,6 +284,21 @@ class ResetDatabaseController {
 		});
 		
 		this.updateTitle();
+	}
+	
+	groupDoctypesByModule() {
+		let modules = {};
+		
+		this.doctypes.forEach(doctype => {
+			let module = doctype.module || "Autres";
+			
+			if (!modules[module]) {
+				modules[module] = [];
+			}
+			modules[module].push(doctype);
+		});
+		
+		return modules;
 	}
 	
 	groupTablesByModule() {
@@ -176,32 +324,90 @@ class ResetDatabaseController {
 		return modules;
 	}
 	
-	filterTables() {
+	filterItems() {
 		let searchTerm = this.searchField.val().toLowerCase();
 		
-		this.tables.forEach(table => {
-			let tableItem = table.checkbox.closest('.table-item');
-			if(table.name.toLowerCase().includes(searchTerm)) {
-				tableItem.show();
-			} else {
-				tableItem.hide();
-			}
-		});
+		if (this.activeTab === 'doctypes') {
+			this.doctypes.forEach(doctype => {
+				let itemEntry = doctype.checkbox.closest('.item-entry');
+				if(doctype.name.toLowerCase().includes(searchTerm)) {
+					itemEntry.show();
+				} else {
+					itemEntry.hide();
+				}
+			});
+		} else {
+			this.tables.forEach(table => {
+				let itemEntry = table.checkbox.closest('.item-entry');
+				if(table.name.toLowerCase().includes(searchTerm)) {
+					itemEntry.show();
+				} else {
+					itemEntry.hide();
+				}
+			});
+		}
 	}
 	
 	selectAll() {
-		$('.table-item:visible input[type="checkbox"]').prop('checked', true).trigger('change');
+		$('.item-entry:visible input[type="checkbox"]').prop('checked', true).trigger('change');
 	}
 	
 	deselectAll() {
-		$('.table-item:visible input[type="checkbox"]').prop('checked', false).trigger('change');
+		$('.item-entry:visible input[type="checkbox"]').prop('checked', false).trigger('change');
 	}
 	
 	updateTitle() {
-		// Mettre à jour le compteur de tables sélectionnées
+		// Mettre à jour le compteur d'éléments sélectionnés
+		let count = this.activeTab === 'doctypes' ? this.selectedDoctypes.length : this.selectedTables.length;
+		let itemType = this.activeTab === 'doctypes' ? __('doctypes') : __('tables');
+		
 		this.page.set_title(
 			__('Réinitialisation de la Base de Données') + 
-			` <span class="text-muted">(${this.selectedTables.length} ${__('tables sélectionnées')})</span>`
+			` <span class="text-muted">(${count} ${itemType} ${__('sélectionnés')})</span>`
+		);
+	}
+	
+	resetSelectedDoctypes() {
+		if(this.selectedDoctypes.length === 0) {
+			frappe.msgprint(__('Veuillez sélectionner au moins un doctype à vider.'));
+			return;
+		}
+		
+		frappe.confirm(
+			__('Cette action supprimera toutes les données des doctypes sélectionnés. Cette opération est irréversible. Êtes-vous sûr ?'),
+			() => {
+				frappe.call({
+					method: 'erpnext.reset_database.page.reset_database.reset_database.reset_selected_doctypes',
+					args: {
+						'doctypes': this.selectedDoctypes
+					},
+					freeze: true,
+					freeze_message: __('Suppression des données en cours...'),
+					callback: (r) => {
+						if(r.message) {
+							this.loadDoctypes();
+						}
+					}
+				});
+			}
+		);
+	}
+	
+	resetAllDoctypes() {
+		frappe.confirm(
+			__('Cette action supprimera toutes les données de tous les doctypes (sauf les utilisateurs et autres doctypes système). Cette opération est irréversible. Êtes-vous sûr ?'),
+			() => {
+				frappe.call({
+					method: 'erpnext.reset_database.page.reset_database.reset_database.reset_all_doctypes',
+					freeze: true,
+					freeze_message: __('Réinitialisation des données en cours...'),
+					callback: (r) => {
+						if(r.message) {
+							this.loadDoctypes();
+						}
+					}
+				});
+			}
 		);
 	}
 	
