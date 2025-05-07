@@ -352,6 +352,7 @@ def find_or_create_warehouse(warehouse_name, company, company_abbr, results, lin
     if not warehouse_name:
         return None
         
+    # Vérifier si l'entrepôt existe déjà exactement avec ce nom
     if frappe.db.exists("Warehouse", warehouse_name):
         return warehouse_name
         
@@ -360,36 +361,14 @@ def find_or_create_warehouse(warehouse_name, company, company_abbr, results, lin
     
     if frappe.db.exists("Warehouse", possible_warehouse):
         return possible_warehouse
-        
-    # Vérifier s'il existe un entrepôt par défaut
-    default_warehouse = frappe.db.get_single_value("Stock Settings", "default_warehouse")
-    if default_warehouse and frappe.db.exists("Warehouse", default_warehouse):
-        results["info"].append(_("{0} (ligne {1}): Utilisation de l'entrepôt par défaut '{2}' au lieu de '{3}'").format(
-            file_type, line_number, default_warehouse, warehouse_name))
-        return default_warehouse
-        
-    # Chercher un entrepôt de la société
-    stores_warehouse = frappe.db.get_value("Warehouse", {"warehouse_name": "Stores", "company": company})
-    if stores_warehouse:
-        results["info"].append(_("{0} (ligne {1}): Utilisation de l'entrepôt '{2}' au lieu de '{3}'").format(
-            file_type, line_number, stores_warehouse, warehouse_name))
-        return stores_warehouse
-        
-    # Si aucun entrepôt n'est trouvé, utiliser le premier entrepôt de la société
-    warehouses = frappe.get_all("Warehouse", 
-        filters={"company": company, "is_group": 0},
-        limit=1)
     
-    if warehouses:
-        results["info"].append(_("{0} (ligne {1}): Utilisation de l'entrepôt '{2}' au lieu de '{3}'").format(
-            file_type, line_number, warehouses[0].name, warehouse_name))
-        return warehouses[0].name
-    
-    # Créer un nouvel entrepôt "Stores"
+    # Au lieu de chercher d'autres entrepôts, on va créer celui demandé
     try:
+        # Vérifier si "All Warehouses" existe
         all_warehouse = frappe.db.get_value("Warehouse", {"warehouse_name": "All Warehouses", "company": company})
         
         if not all_warehouse:
+            # Créer le parent "All Warehouses" si nécessaire
             all_warehouse_doc = frappe.new_doc("Warehouse")
             all_warehouse_doc.warehouse_name = "All Warehouses"
             all_warehouse_doc.company = company
@@ -398,26 +377,80 @@ def find_or_create_warehouse(warehouse_name, company, company_abbr, results, lin
             all_warehouse_doc.insert()
             all_warehouse = all_warehouse_doc.name
         
+        # Créer l'entrepôt demandé
         new_warehouse = frappe.new_doc("Warehouse")
-        new_warehouse.warehouse_name = "Stores"
+        new_warehouse.warehouse_name = warehouse_name
         new_warehouse.company = company
         new_warehouse.is_group = 0
         new_warehouse.parent_warehouse = all_warehouse
         new_warehouse.insert()
         
-        # Mettre à jour les paramètres de stock
-        stock_settings = frappe.get_doc("Stock Settings")
-        stock_settings.default_warehouse = new_warehouse.name
-        stock_settings.save()
+        # Utiliser le nouveau nom complet qui inclut généralement le suffixe de la société
+        new_warehouse_name = new_warehouse.name
         
-        results["info"].append(_("{0} (ligne {1}): Nouvel entrepôt '{2}' créé et défini comme entrepôt par défaut").format(
-            file_type, line_number, new_warehouse.name))
-        return new_warehouse.name
+        results["info"].append(_("{0} (ligne {1}): Nouvel entrepôt '{2}' créé").format(
+            file_type, line_number, new_warehouse_name))
+        
+        # Définir comme entrepôt par défaut si aucun n'est défini
+        default_warehouse = frappe.db.get_single_value("Stock Settings", "default_warehouse")
+        if not default_warehouse:
+            stock_settings = frappe.get_doc("Stock Settings")
+            stock_settings.default_warehouse = new_warehouse_name
+            stock_settings.save()
+            results["info"].append(_("{0} (ligne {1}): L'entrepôt '{2}' a été défini comme entrepôt par défaut").format(
+                file_type, line_number, new_warehouse_name))
+        
+        return new_warehouse_name
         
     except Exception as e:
-        results["errors"].append(_("{0} (ligne {1}): Impossible de créer l'entrepôt par défaut: {2}").format(
-            file_type, line_number, str(e)))
-        return None
+        # Si la création échoue, on cherche des alternatives comme avant
+        results["errors"].append(_("{0} (ligne {1}): Erreur lors de la création de l'entrepôt '{2}': {3}").format(
+            file_type, line_number, warehouse_name, str(e)))
+        
+        # Chercher un entrepôt existant comme solution de secours
+        default_warehouse = frappe.db.get_single_value("Stock Settings", "default_warehouse")
+        if default_warehouse and frappe.db.exists("Warehouse", default_warehouse):
+            results["info"].append(_("{0} (ligne {1}): Utilisation de l'entrepôt par défaut '{2}' au lieu de '{3}'").format(
+                file_type, line_number, default_warehouse, warehouse_name))
+            return default_warehouse
+            
+        # Chercher l'entrepôt "Stores" de la société
+        stores_warehouse = frappe.db.get_value("Warehouse", {"warehouse_name": "Stores", "company": company})
+        if stores_warehouse:
+            results["info"].append(_("{0} (ligne {1}): Utilisation de l'entrepôt '{2}' au lieu de '{3}'").format(
+                file_type, line_number, stores_warehouse, warehouse_name))
+            return stores_warehouse
+            
+        # Si aucun entrepôt n'est trouvé, utiliser le premier entrepôt de la société
+        warehouses = frappe.get_all("Warehouse", 
+            filters={"company": company, "is_group": 0},
+            limit=1)
+        
+        if warehouses:
+            results["info"].append(_("{0} (ligne {1}): Utilisation de l'entrepôt '{2}' au lieu de '{3}'").format(
+                file_type, line_number, warehouses[0].name, warehouse_name))
+            return warehouses[0].name
+        
+        # Si vraiment aucun entrepôt n'est disponible, créer "Stores" comme dernier recours
+        try:
+            new_warehouse = frappe.new_doc("Warehouse")
+            new_warehouse.warehouse_name = "Stores"
+            new_warehouse.company = company
+            new_warehouse.is_group = 0
+            new_warehouse.parent_warehouse = all_warehouse
+            new_warehouse.insert()
+            
+            stock_settings = frappe.get_doc("Stock Settings")
+            stock_settings.default_warehouse = new_warehouse.name
+            stock_settings.save()
+            
+            results["info"].append(_("{0} (ligne {1}): Nouvel entrepôt '{2}' créé et défini comme entrepôt par défaut").format(
+                file_type, line_number, new_warehouse.name))
+            return new_warehouse.name
+        except Exception as e2:
+            results["errors"].append(_("{0} (ligne {1}): Impossible de créer l'entrepôt de secours: {2}").format(
+                file_type, line_number, str(e2)))
+            return None
 
 def find_or_create_item_group(item_group_name, company, warehouse, results, line_number):
     """Trouver ou créer un groupe d'articles"""
@@ -830,9 +863,8 @@ def create_supplier_quotations(rfqs_inserted, results):
     
     return True
 
-# Ajouter cette fonction pour valider et formater les dates
 def validate_and_format_date(date_str, results, file_type, line_number, field_name):
-    """Valide et formate une date au format YYYY-MM-DD"""
+    """Valide et formate une date au format YYYY-MM-DD en supposant un format d'entrée dd/mm/yyyy"""
     try:
         # Vérifier si la date est déjà au bon format (YYYY-MM-DD)
         if len(date_str) == 10 and date_str[4] == '-' and date_str[7] == '-':
@@ -845,21 +877,50 @@ def validate_and_format_date(date_str, results, file_type, line_number, field_na
             datetime.date(year, month, day)
             return date_str
         
-        # Essayer de convertir d'autres formats de date courants
+        # Vérifier si le format est dd/mm/yyyy
+        if len(date_str) == 10 and date_str[2] == '/' and date_str[5] == '/':
+            day = int(date_str[0:2])
+            month = int(date_str[3:5])
+            year = int(date_str[6:10])
+            
+            # Vérifier si la date est valide
+            import datetime
+            date_obj = datetime.date(year, month, day)
+            
+            # Convertir au format YYYY-MM-DD
+            formatted_date = date_obj.strftime("%Y-%m-%d")
+            
+            results["info"].append(_("{0} (ligne {1}): Date '{2}' (format dd/mm/yyyy) reformatée en '{3}'").format(
+                file_type, line_number, date_str, formatted_date))
+            
+            return formatted_date
+        
+        # Si ce n'est pas au format dd/mm/yyyy, essayer d'autres formats en précisant le format français
         from dateutil import parser
-        from frappe.utils import getdate, formatdate
+        from frappe.utils import formatdate
         
-        # Analyser la date avec dateutil
-        parsed_date = parser.parse(date_str)
-        
-        # Convertir au format YYYY-MM-DD
-        formatted_date = formatdate(parsed_date, "yyyy-mm-dd")
-        
-        results["info"].append(_("{0} (ligne {1}): Date '{2}' reformatée en '{3}'").format(
-            file_type, line_number, date_str, formatted_date))
-        
-        return formatted_date
-        
+        # Forcer l'interprétation en format européen (jour/mois/année)
+        try:
+            # Parser avec dayfirst=True pour interpréter comme dd/mm/yyyy
+            parsed_date = parser.parse(date_str, dayfirst=True)
+            
+            # Convertir au format YYYY-MM-DD
+            formatted_date = formatdate(parsed_date, "yyyy-mm-dd")
+            
+            results["info"].append(_("{0} (ligne {1}): Date '{2}' (format européen) reformatée en '{3}'").format(
+                file_type, line_number, date_str, formatted_date))
+            
+            return formatted_date
+        except:
+            # Si l'interprétation en format européen échoue, essayer avec le format américain
+            parsed_date = parser.parse(date_str)
+            formatted_date = formatdate(parsed_date, "yyyy-mm-dd")
+            
+            results["info"].append(_("{0} (ligne {1}): Date '{2}' reformatée en '{3}'").format(
+                file_type, line_number, date_str, formatted_date))
+            
+            return formatted_date
+            
     except Exception as e:
         results["errors"].append(_("{0} (ligne {1}): Format de {2} invalide '{3}': {4}").format(
             file_type, line_number, field_name, date_str, str(e)))

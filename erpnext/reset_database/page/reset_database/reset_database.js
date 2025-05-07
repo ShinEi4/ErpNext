@@ -194,10 +194,21 @@ class ResetDatabaseController {
 		Object.keys(moduleGroups).sort().forEach(module => {
 			let moduleSection = $(`
 				<div class="module-section mb-3">
-					<h6 class="module-title">${module} (${moduleGroups[module].length})</h6>
+					<h6 class="module-title">
+						${module} (${moduleGroups[module].length})
+						<button class="btn btn-xs btn-default select-module-btn ml-2" data-module="${module}">
+							${__('Sélectionner module')}
+						</button>
+					</h6>
 					<div class="item-list row"></div>
 				</div>
 			`).appendTo(this.itemsContainer);
+			
+			// Ajouter l'événement pour sélectionner toutes les doctypes du module
+			moduleSection.find('.select-module-btn').on('click', (e) => {
+				const moduleToSelect = $(e.currentTarget).data('module');
+				this.selectModuleDoctypes(moduleToSelect);
+			});
 			
 			let itemList = moduleSection.find('.item-list');
 			
@@ -208,7 +219,7 @@ class ResetDatabaseController {
 				let checkboxItem = $(`
 					<div class="checkbox">
 						<label>
-							<input type="checkbox" data-doctype="${doctype.name}"> 
+							<input type="checkbox" data-doctype="${doctype.name}" data-module="${module}"> 
 							${doctype.name} <span class="text-muted">(${doctype.count})</span>
 						</label>
 					</div>
@@ -453,5 +464,11 @@ class ResetDatabaseController {
 				});
 			}
 		);
+	}
+	
+	// Ajouter cette nouvelle méthode pour sélectionner toutes les doctypes d'un module
+	selectModuleDoctypes(moduleName) {
+		// Sélectionner toutes les cases à cocher avec ce module
+		$(`.item-entry input[data-module="${moduleName}"]`).prop('checked', true).trigger('change');
 	}
 }
